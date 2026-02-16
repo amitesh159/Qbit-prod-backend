@@ -1,0 +1,281 @@
+# Render Blueprint Configuration for Qbit Backend
+# This file defines the infrastructure for deploying Qbit on Render.com
+# Documentation: https://render.com/docs/blueprint-spec
+
+services:
+  # ============================================================================
+  # WEB SERVICE - FastAPI Backend
+  # ============================================================================
+  - type: web
+    name: qbit-backend
+    runtime: python
+    plan: free  # Change to 'starter' or higher for production
+    region: oregon  # Choose: oregon, frankfurt, singapore, ohio
+    branch: main  # Git branch to deploy
+    
+    # Build Configuration
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    
+    # Start Command
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2
+    
+    # Python Version
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    
+    # Health Check
+    healthCheckPath: /health
+    
+    # Auto-Deploy
+    autoDeploy: true
+    
+    # Environment Variables (Secrets)
+    # These will be set in Render Dashboard or via render.yaml (not recommended for secrets)
+    envVars:
+      # Application Settings
+      - key: APP_NAME
+        value: Qbit
+      
+      - key: APP_VERSION
+        value: 1.0.0
+      
+      - key: ENVIRONMENT
+        value: production
+      
+      - key: DEBUG
+        value: false
+      
+      - key: API_V1_PREFIX
+        value: /api/v1
+      
+      - key: HOST
+        value: 0.0.0.0
+      
+      - key: PORT
+        value: 10000  # Render default port
+      
+      - key: RELOAD
+        value: false
+      
+      # MongoDB Atlas (REQUIRED - Set in Render Dashboard)
+      - key: MONGODB_URI
+        sync: false  # Must be set manually in Render Dashboard
+      
+      - key: MONGODB_DB_NAME
+        value: qbit_production
+      
+      - key: MONGODB_MIN_POOL_SIZE
+        value: 10
+      
+      - key: MONGODB_MAX_POOL_SIZE
+        value: 100
+      
+      # Redis Cloud (REQUIRED - Set in Render Dashboard)
+      - key: REDIS_URL
+        sync: false  # Must be set manually in Render Dashboard
+      
+      - key: REDIS_MAX_CONNECTIONS
+        value: 50
+      
+      - key: REDIS_SOCKET_TIMEOUT
+        value: 5
+      
+      - key: REDIS_SOCKET_CONNECT_TIMEOUT
+        value: 5
+      
+      # Groq API Keys (REQUIRED - Set in Render Dashboard)
+      - key: GROQ_API_KEYS
+        sync: false  # Comma-separated keys
+      
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      
+      - key: GROQ_RPM_LIMIT
+        value: 30
+      
+      # Cerebras API Keys (REQUIRED - Set in Render Dashboard)
+      - key: CEREBRAS_API_KEYS
+        sync: false  # Comma-separated keys
+      
+      - key: CEREBRAS_MODEL
+        value: gpt-oss-120b
+      
+      - key: CEREBRAS_RPM_LIMIT
+        value: 30
+      
+      # Bytez API Keys (REQUIRED - Set in Render Dashboard)
+      - key: BYTEZ_API_KEYS
+        sync: false  # Comma-separated keys
+      
+      - key: BYTEZ_MODEL
+        value: anthropic/claude-sonnet-4-20250514
+      
+      - key: BYTEZ_RPS_LIMIT
+        value: 10
+      
+      # E2B Sandbox (REQUIRED - Set in Render Dashboard)
+      - key: E2B_API_KEY
+        sync: false
+      
+      - key: E2B_TIMEOUT
+        value: 300
+      
+      - key: E2B_MAX_SANDBOXES
+        value: 20
+      
+      - key: E2B_TEMPLATE_ID
+        sync: false  # Your E2B template ID
+      
+      # JWT Authentication (REQUIRED - Generate secure key)
+      - key: JWT_SECRET_KEY
+        sync: false  # Generate with: openssl rand -hex 32
+      
+      - key: JWT_ALGORITHM
+        value: HS256
+      
+      - key: JWT_ACCESS_TOKEN_EXPIRE_DAYS
+        value: 7
+      
+      # Password Hashing
+      - key: BCRYPT_ROUNDS
+        value: 12
+      
+      # GitHub OAuth (OPTIONAL - Set if using GitHub auth)
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      
+      - key: GITHUB_CALLBACK_URL
+        value: https://qbit-backend.onrender.com/api/v1/auth/github/callback
+      
+      # Celery (Background Tasks)
+      - key: CELERY_BROKER_URL
+        sync: false  # Same as REDIS_URL with /0 suffix
+      
+      - key: CELERY_RESULT_BACKEND
+        sync: false  # Same as REDIS_URL with /0 suffix
+      
+      - key: CELERY_TASK_SERIALIZER
+        value: json
+      
+      - key: CELERY_RESULT_SERIALIZER
+        value: json
+      
+      - key: CELERY_TIMEZONE
+        value: UTC
+      
+      - key: CELERY_ENABLE_UTC
+        value: true
+      
+      # Rate Limiting
+      - key: RATE_LIMIT_CODE_GENERATION
+        value: 10
+      
+      - key: RATE_LIMIT_API_CALLS
+        value: 60
+      
+      - key: RATE_LIMIT_ENABLED
+        value: true
+      
+      - key: RATE_LIMIT_GLOBAL
+        value: 1000
+      
+      # Credits System
+      - key: DEFAULT_USER_CREDITS
+        value: 100
+      
+      - key: CREDIT_SIMPLE_PROJECT
+        value: 10
+      
+      - key: CREDIT_MODERATE_PROJECT
+        value: 20
+      
+      - key: CREDIT_COMPLEX_PROJECT
+        value: 30
+      
+      - key: CREDIT_WEB_SEARCH
+        value: 2
+      
+      # CORS Settings (Update with your frontend URL)
+      - key: CORS_ORIGINS
+        value: http://localhost:3000,https://your-frontend.vercel.app
+      
+      - key: CORS_ALLOW_CREDENTIALS
+        value: true
+      
+      - key: CORS_ALLOW_METHODS
+        value: "*"
+      
+      - key: CORS_ALLOW_HEADERS
+        value: "*"
+      
+      # Logging
+      - key: LOG_LEVEL
+        value: INFO
+      
+      - key: LOG_FORMAT
+        value: json
+      
+      # Monitoring
+      - key: ENABLE_METRICS
+        value: true
+      
+      - key: METRICS_PORT
+        value: 9090
+      
+      # Context Management
+      - key: MAX_CONTEXT_TOKENS
+        value: 30000
+      
+      - key: MAX_CONVERSATION_TURNS
+        value: 10
+      
+      - key: MAX_FILES_IN_CONTEXT
+        value: 8
+      
+      - key: MAX_MODULES_IN_CONTEXT
+        value: 5
+      
+      # Sandbox Decision
+      - key: DEFAULT_SANDBOX
+        value: auto
+      
+      # Production Options
+      - key: SHOW_ERROR_DETAILS
+        value: false
+      
+      - key: ENABLE_DOCS
+        value: true
+
+  # ============================================================================
+  # BACKGROUND WORKER - Celery Worker (Optional)
+  # ============================================================================
+  # Uncomment this section if you need background task processing
+  # - type: worker
+  #   name: qbit-celery-worker
+  #   runtime: python
+  #   plan: free
+  #   region: oregon
+  #   branch: main
+  #   
+  #   buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+  #   startCommand: celery -A tasks.celery_app worker --loglevel=info
+  #   
+  #   envVars:
+  #     - key: PYTHON_VERSION
+  #       value: 3.11.0
+  #     
+  #     # Inherit all environment variables from web service
+  #     - fromGroup: qbit-backend
+
+# ============================================================================
+# DATABASES (External Services - Not managed by Render)
+# ============================================================================
+# Note: MongoDB Atlas and Redis Cloud are external services.
+# You need to:
+# 1. Create a MongoDB Atlas cluster (free tier available)
+# 2. Create a Redis Cloud instance (free tier available)
+# 3. Add connection strings to Render environment variables
