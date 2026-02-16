@@ -1,0 +1,68 @@
+# Core Framework
+fastapi==0.128.7
+uvicorn[standard]==0.32.1 # Error fetching latest version
+pydantic==2.12.5
+pydantic-settings==2.12.0
+pydantic[email] # Error fetching latest version
+
+# Database - MongoDB (Async)
+motor==3.7.1
+pymongo==4.16.0
+
+# Database - Redis
+redis[hiredis]==5.2.1 # Error fetching latest version
+
+# AI/LLM Libraries - NOT USING LANGCHAIN (per PRD, using direct SDK)
+# langchain is not needed - using Groq and Cerebras SDKs directly
+
+cerebras-cloud-sdk==1.67.0
+langchain_cerebras==0.8.2
+langchain==1.2.10
+langchain-core==1.2.10
+langchain-groq==1.1.2
+langgraph==1.0.8
+langgraph-sdk==0.3.4
+# E2B Sandbox
+e2b==2.13.2
+e2b-code-interpreter==2.4.1
+
+# Authentication & Security
+pyjwt==2.11.0
+passlib[bcrypt]==1.7.4 # Error fetching latest version
+authlib==1.6.7
+python-multipart==0.0.22
+
+# HTTP Client
+httpx==0.28.1
+
+# Task Queue
+celery==5.6.2
+flower==2.0.1
+
+# Retry Logic
+tenacity==9.1.4
+
+# Logging
+structlog==25.5.0
+python-json-logger==4.0.0
+
+# Rich Console Output
+rich==14.3.2
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Monitoring
+prometheus-client==0.24.1
+
+# Environment Variables
+python-dotenv==1.2.1
+
+# Utilities
+aiofiles==25.1.0
+
+# Development Tools (optional)
+pytest==9.0.2
+pytest-asyncio==1.3.0
+black==26.1.0
+ruff==0.15.0
