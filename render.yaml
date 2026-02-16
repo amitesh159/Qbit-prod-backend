@@ -19,11 +19,6 @@ services:
     # Start Command
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2
     
-    # Python Version
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-    
     # Health Check
     healthCheckPath: /health
     
@@ -33,6 +28,10 @@ services:
     # Environment Variables (Secrets)
     # These will be set in Render Dashboard or via render.yaml (not recommended for secrets)
     envVars:
+      # Python Version (MUST BE FIRST)
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      
       # Application Settings
       - key: APP_NAME
         value: Qbit
