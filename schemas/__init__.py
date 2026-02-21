@@ -18,7 +18,9 @@ from schemas.scp import (
 )
 
 from schemas.agent import (
-    FileSchema,
+    KeyValuePair,
+    FileOperation,
+    DependenciesSchema,
     AgentOutputSchema,
 )
 
@@ -30,6 +32,8 @@ __all__ = [
     "SCPSchema",
     "CentralHubOutput",
     # Agent schemas
-    "FileSchema",
+    "KeyValuePair",
+    "FileOperation",
+    "DependenciesSchema",
     "AgentOutputSchema",
 ]

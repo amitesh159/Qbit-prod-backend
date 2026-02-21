@@ -372,57 +372,27 @@ class E2BManager:
         user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Install npm dependencies for frontend, backend, and AI services.
-        
-        TEMPLATE MODE: Returns success immediately since all dependencies
-        (Next.js, React, shadcn/ui, etc.) are pre-installed in the template.
-        
+        Install npm dependencies for the project's generated files.
+
+        Conditionally installs frontend/backend/ai_services if those directories
+        contain a package.json (i.e., the agent wrote new dependencies).
+
         Args:
             project_id: Project ID
             preview_mode: "frontend", "fullstack", "backend"
             websocket_manager: Optional WebSocket manager for progress
             user_id: Optional user ID for WebSocket
-            
+
         Returns:
-            Dict with success status (always True in template mode)
-        """
-        logger.info(
-            "[E2B] Template mode: Skipping install_dependencies (pre-installed)",
-            project_id=project_id,
-            template_id=self.template_id,
-            preview_mode=preview_mode
-        )
-        return {
-            "success": True,
-            "frontend_installed": True,
-            "backend_installed": True,
-            "ai_installed": True, # Changed from ai_services_installed to ai_installed
-            "message": "Dependencies pre-installed in template"
-        }
-        """
-        Install npm dependencies with clean, minimal logging.
-        
-        Based on E2B expert patterns:
-        - Only install for directories that exist (conditional)
-        - Use --silent flag to reduce output spam
-        - Sequential installation (avoid npm lock conflicts)
-        - Minimal logging (start, end, summary only)
-        
-        Returns:
-            {
-                "success": bool,
-                "frontend_installed": bool,
-                "backend_installed": bool,
-                "ai_installed": bool,
-                "error": Optional[str]
-            }
+            Dict with success status
         """
         if project_id not in self.active_sandboxes:
             return {"success": False, "error": "Sandbox not found"}
-        
+
         sandbox = self.active_sandboxes[project_id]
+        import asyncio
         loop = asyncio.get_event_loop()
-        
+
         result = {
             "success": False,
             "frontend_installed": False,
@@ -430,7 +400,7 @@ class E2BManager:
             "ai_installed": False,
             "error": None
         }
-        
+
         try:
             # Check which directories exist (CONDITIONAL INSTALLATION)
             has_frontend = await loop.run_in_executor(
@@ -991,9 +961,9 @@ class E2BManager:
             from database.connection import get_database
             db = await get_database()
             
-            # Fetch files from MongoDB
+            # Fetch files from MongoDB (stored in code_blobs by generation_routes.py)
             files = {}
-            async for blob in db.code_files.find({"file_id": {"$regex": f"^{project_id}:"}}):
+            async for blob in db.code_blobs.find({"file_id": {"$regex": f"^{project_id}:"}}):
                 files[blob["path"]] = blob["content"]
             
             if not files:
@@ -1032,9 +1002,25 @@ class E2BManager:
                 logger.error("[E2B] Recreation failed: server startup error", project_id=project_id)
                 return None
             
+            new_preview_url = server_result.get("preview_url")
+            
+            # Bug fix: persist the NEW preview_url to DB — the old one is a dead E2B host
+            try:
+                from datetime import datetime as _dt
+                await db.sandbox_sessions.update_one(
+                    {"project_id": project_id},
+                    {"$set": {
+                        "preview_url": new_preview_url,
+                        "status": "active",
+                        "last_active": _dt.utcnow()
+                    }}
+                )
+            except Exception as _upd_err:
+                logger.warning("[E2B] Could not update preview_url in DB", error=str(_upd_err))
+            
             logger.info("[E2B] ✅ Sandbox recreated successfully",
                        project_id=project_id,
-                       preview_url=server_result.get("preview_url"))
+                       preview_url=new_preview_url)
             
             return self.active_sandboxes.get(project_id)
             
@@ -1121,7 +1107,43 @@ class E2BManager:
                 for p in processes
             ]
         }
-    
+
+    async def delete_file(self, project_id: str, file_path: str) -> bool:
+        """
+        Delete a single file from the sandbox.
+
+        Used by QAP delete operations in follow-up modifications.
+
+        Args:
+            project_id: Project ID
+            file_path: Path to file in sandbox (e.g. 'frontend/src/components/OldComponent.tsx')
+
+        Returns:
+            True if deleted, False if sandbox not found or file missing
+        """
+        if project_id not in self.active_sandboxes:
+            logger.warning("[E2B] delete_file: sandbox not found", project_id=project_id)
+            return False
+
+        sandbox = self.active_sandboxes[project_id]
+        loop = asyncio.get_event_loop()
+
+        try:
+            await loop.run_in_executor(
+                None,
+                lambda: sandbox.files.remove(file_path)
+            )
+            logger.info("[E2B] Deleted file", project_id=project_id, file_path=file_path)
+            return True
+        except Exception as e:
+            logger.warning(
+                "[E2B] delete_file failed (file may not exist in sandbox)",
+                project_id=project_id,
+                file_path=file_path,
+                error=str(e)
+            )
+            return False
+
     async def update_files_hot_reload(
         self,
         project_id: str,

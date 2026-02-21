@@ -6,14 +6,15 @@ ARCHITECTURE: 1 API Call with Memory Integration
 - Loads conversation history (cached - instant!)
 - Loads project context (cached - instant!)
 - Injects context into prompt
-- Makes SINGLE Groq API call
+- Makes SINGLE Groq API call (ASYNC - non-blocking)
 - Parses with Pydantic (robust validation)
 - Saves to cache
-- Returns structured output
+- Returns structured output including agent_strategy
 
 ROLE:
 - Intent classification (code_generation|follow_up|conversation|discussion|ambiguous)
 - SCP generation for code intents (complete specification)
+- Agent strategy planning (call_count, scope per call, key_concerns)
 - Direct responses for non-code intents
 - Never generates code - delegates to FullStack Agent
 """
@@ -21,14 +22,14 @@ import structlog
 import json
 import re
 from typing import Dict, Any, Optional, List
-from groq import Groq
+from groq import AsyncGroq  # Changed from Groq to AsyncGroq (non-blocking)
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage
 
 from rotation.key_manager import groq_pool
 from memory.cached_conversation import CachedConversationMemory
 from memory.project_store_cache import CachedProjectStore
-from schemas.scp import CentralHubOutput
+from schemas.scp import CentralHubOutput, AgentStrategy, AgentCallScope
 from config.settings import settings
 
 logger = structlog.get_logger(__name__)
@@ -134,20 +135,20 @@ class CentralHub:
             system_prompt = self._build_system_prompt(history, project_ctx, discussion_mode)
             user_prompt = self._build_user_prompt(user_message, project_ctx)
             
-            # Step 4: SINGLE API CALL
+            # Step 4: SINGLE ASYNC API CALL (non-blocking - uses AsyncGroq)
             api_key = groq_pool.get_next_key()
-            client = Groq(api_key=api_key)
+            client = AsyncGroq(api_key=api_key)  # AsyncGroq - won't block event loop
             
             logger.debug("making_groq_api_call", model=self.model)
             
-            response = client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.3,
-                max_tokens=16000,  # Increased from 8000 to prevent truncation
+                max_tokens=16000,
                 response_format={"type": "json_object"}  # Force valid JSON output
             )
             
@@ -203,15 +204,16 @@ class CentralHub:
         # Base prompt with comprehensive PM guidance
         parts.append(CENTRAL_HUB_SYSTEM_PROMPT)
         
-        # Inject conversation history
+        # Inject conversation history (full content, not 150-char truncation)
         if history:
             parts.append("\n## 💬 Conversation History (Context Injection)\n")
             parts.append("Previous messages in this conversation:\n")
             for msg in history[-10:]:  # Last 10 messages
                 if isinstance(msg, HumanMessage):
-                    parts.append(f"**User**: {msg.content[:150]}...\n")
+                    # Full content up to 500 chars (not 150 which was too truncated)
+                    parts.append(f"**User**: {msg.content[:500]}\n")
                 elif isinstance(msg, AIMessage):
-                    parts.append(f"**Assistant**: {msg.content[:150]}...\n")
+                    parts.append(f"**Assistant**: {msg.content[:300]}\n")
             parts.append("\nUse this history to understand follow-up requests and provide consistent responses.\n")
         
         # Inject project context
@@ -321,6 +323,7 @@ class CentralHub:
         - code_generation/follow_up MUST have SCP
         - conversation/discussion/ambiguous MUST have response
         - Set agent_invocation based on intent
+        - Build default agent_strategy if not provided by LLM
         """
         # Ensure required fields exist
         normalized = {
@@ -329,7 +332,8 @@ class CentralHub:
             "response": result.get("response"),
             "scp": result.get("scp"),
             "agent_invocation": result.get("agent_invocation", "none"),
-            "reasoning": result.get("reasoning")
+            "reasoning": result.get("reasoning"),
+            "agent_strategy": result.get("agent_strategy"),
         }
         
         # Validate: code intents must have SCP
@@ -339,10 +343,17 @@ class CentralHub:
                 normalized["intent"] = "ambiguous"
                 normalized["response"] = "I need more details. What type of application do you want to build?"
                 normalized["agent_invocation"] = "none"
+                normalized["agent_strategy"] = None
             else:
                 normalized["agent_invocation"] = "fullstack_agent"
+                # Build default agent_strategy if LLM didn't provide one
+                if not normalized.get("agent_strategy"):
+                    normalized["agent_strategy"] = self._build_default_strategy(
+                        normalized["complexity"], normalized["intent"]
+                    )
         else:
             normalized["agent_invocation"] = "none"
+            normalized["agent_strategy"] = None
         
         # Validate: non-code intents should have response
         if normalized["intent"] in self.DIRECT_RESPONSE_INTENTS:
@@ -350,6 +361,44 @@ class CentralHub:
                 normalized["response"] = "I'm here to help! What would you like to know?"
         
         return normalized
+    
+    def _build_default_strategy(self, complexity: Optional[str], intent: str) -> Dict[str, Any]:
+        """
+        Build a default AgentStrategy when the Hub LLM doesn't return one.
+        Fallback: map complexity → call_count with generic scopes.
+        """
+        if complexity == "simple" or intent == "follow_up":
+            return {
+                "call_count": 1,
+                "calls": [{"call_number": 1, "scope": "Generate all required files for this request"}],
+                "needs_npm_install": False,
+                "new_packages": [],
+                "key_concerns": []
+            }
+        elif complexity == "moderate":
+            return {
+                "call_count": 2,
+                "calls": [
+                    {"call_number": 1, "scope": "Generate globals.css, layout.tsx, page.tsx, and core shared components"},
+                    {"call_number": 2, "scope": "Generate feature components, hooks, and remaining pages"},
+                ],
+                "needs_npm_install": False,
+                "new_packages": [],
+                "key_concerns": []
+            }
+        else:  # complex
+            return {
+                "call_count": 3,
+                "calls": [
+                    {"call_number": 1, "scope": "Generate globals.css, layout.tsx, page.tsx, and core UI components"},
+                    {"call_number": 2, "scope": "Generate feature components, data logic, and secondary pages"},
+                    {"call_number": 3, "scope": "Generate backend API routes, server files, and integration code"},
+                ],
+                "needs_npm_install": False,
+                "new_packages": [],
+                "key_concerns": []
+            }
+
     
     def _coerce_to_hub_output(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """

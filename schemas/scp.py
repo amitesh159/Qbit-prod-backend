@@ -2,6 +2,7 @@
 Structured Context Protocol (SCP) and Central Hub Schemas
 
 These schemas define the contract between Central Hub and Fullstack Agent.
+Extended with AgentStrategy so Hub orchestrates agent call patterns.
 """
 
 from pydantic import BaseModel, Field, field_validator
@@ -116,11 +117,50 @@ class SCPSchema(BaseModel):
     )
 
 
+class AgentCallScope(BaseModel):
+    """Scope for a single agent LLM call"""
+    call_number: int = Field(description="1, 2, or 3")
+    scope: str = Field(
+        description="What files this call should generate. Be specific: 'globals.css + layout.tsx + page.tsx + HeroSection component'"
+    )
+    purpose: Optional[str] = Field(
+        default=None,
+        description="Human-readable description of this call's goal, e.g. 'Frontend layout and landing page'"
+    )
+
+
+class AgentStrategy(BaseModel):
+    """
+    Hub-planned strategy for how the agent should execute.
+    Instead of the agent deciding call count, the Hub decides.
+    This enables Hub-as-Orchestrator pattern.
+    """
+    call_count: int = Field(
+        default=1,
+        description="Number of LLM calls the agent should make: 1 (simple), 2 (moderate), 3 (complex/fullstack)"
+    )
+    calls: List[AgentCallScope] = Field(
+        default_factory=list,
+        description="Ordered list of call scopes. Length must equal call_count."
+    )
+    needs_npm_install: bool = Field(
+        default=False,
+        description="Whether this generation requires npm install beyond pre-installed packages"
+    )
+    new_packages: List[str] = Field(
+        default_factory=list,
+        description="Explicit packages to install that are NOT pre-installed in the E2B template"
+    )
+    key_concerns: List[str] = Field(
+        default_factory=list,
+        description="Critical notes for the agent: e.g. 'Use shadcn Card not custom div', 'Dark glassmorphism theme', 'OKLCH colors only'"
+    )
+
+
 class CentralHubOutput(BaseModel):
     """
-    Complete output from Central Hub (LangChain structured output)
-    
-    This schema is enforced by Groq/Cerebras JSON schema mode.
+    Complete output from Central Hub.
+    Extended with agent_strategy so Hub orchestrates agent execution pattern.
     """
     intent: Literal["code_generation", "follow_up", "conversation", "discussion", "ambiguous"] = Field(
         description="Classified user intent"
@@ -143,4 +183,8 @@ class CentralHubOutput(BaseModel):
     reasoning: Optional[str] = Field(
         None,
         description="Chain-of-thought reasoning for classification"
+    )
+    agent_strategy: Optional[AgentStrategy] = Field(
+        None,
+        description="Hub-planned execution strategy for the Fullstack Agent. Required when agent_invocation=fullstack_agent."
     )

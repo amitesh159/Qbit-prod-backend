@@ -345,38 +345,3 @@ def create_codebase_tools(db: AsyncIOMotorDatabase) -> List[StructuredTool]:
     logger.info("langchain_tools_created", tool_count=len(tools))
     return tools
 
-
-# ============================================================================
-# TOOL USAGE EXAMPLES (For Agent Prompts)
-# ============================================================================
-
-TOOL_USAGE_EXAMPLES = """
-# LangChain Tools Usage Examples
-
-## Scenario 1: Follow-Up Modification
-**User Request**: "Add dark mode to my todo app"
-
-**Your workflow:**
-1. `get_project_overview(project_id=...)` - Understand existing architecture
-2. `list_project_files(project_id=..., glob_pattern="*.tsx")` - See component structure
-3. `read_project_files(file_paths=["frontend/app/layout.tsx", "frontend/app/globals.css"])` - Read key files
-4. `search_codebase(query="theme|Theme", project_id=...)` - Check if theme support exists
-5. **Generate code** with context of existing structure
-
-## Scenario 2: Bug Fix
-**User Request**: "Fix the error in the login form"
-
-**Your workflow:**
-1. `search_codebase(query="login|Login", project_id=...)` - Find login-related files
-2. `read_project_files(file_paths=["frontend/components/LoginForm.tsx"])` - Read the form
-3. `search_codebase(query="useState|useForm", file_paths=["frontend/components/LoginForm.tsx"])` - Check state management
-4. **Generate fix** based on current implementation
-
-## Best Practices
-
-1. **Always read before modifying** - Use `read_project_files` to understand current implementation
-2. **Search for patterns** - Use `search_codebase` to find how similar features are implemented
-3. **Understand structure** - Use `list_project_files` to see organization
-4. **Get context** - Use `get_project_overview` for follow-ups
-5. **Limit tool calls** - Only use tools when necessary
-"""

@@ -511,18 +511,10 @@ async def get_project_preview(
     
     # Try to use existing sandbox
     if session and session.get("sandbox_id"):
-        # Check if sandbox is still alive
-        is_alive = await e2b_manager.is_sandbox_alive(project_id)
+        # get_active_sandbox handles health check + auto-reconnection from DB
+        sandbox = await e2b_manager.get_active_sandbox(project_id)
         
-        if not is_alive and session.get("sandbox_id"):
-            # Try to reconnect to E2B sandbox
-            reconnected = await e2b_manager.reconnect_sandbox(
-                session["sandbox_id"], 
-                project_id
-            )
-            is_alive = reconnected
-        
-        if is_alive:
+        if sandbox is not None:
             # Update last_active timestamp
             await db.sandbox_sessions.update_one(
                 {"project_id": project_id},
@@ -559,33 +551,29 @@ async def get_project_preview(
         # Create new sandbox
         sandbox_info = await e2b_manager.create_sandbox(project_id)
         
-        # Determine preview mode (default to frontend_only for now for speed)
-        # In future, can check project["summary"]["metadata"]["preview_mode"]
-        # logic: if complexity is simple/moderate -> frontend_only
-        # if complex -> fullstack (requires more credits)
+        # Deploy all project files into sandbox
+        await e2b_manager.deploy_files(
+            project_id=project_id,
+            files=files,
+            websocket_manager=None,
+            user_id=None
+        )
         
-        complexity = project.get("summary", {}).get("metadata", {}).get("complexity", "moderate")
-        preview_mode = "frontend_only"
-        
-        # If user specifically requested fullstack (e.g. "real db"), we stick to fullstack
-        # For now, we bias towards frontend_only for cost
-        
-        # Deploy files with mock injection if needed
-        await e2b_manager.deploy_files(project_id, files, preview_mode=preview_mode)
-        
-        # Detect project type and install dependencies
+        # Run npm install (no websocket in this REST path)
         has_package_json = any("package.json" in path for path in files.keys())
-        has_requirements = any("requirements.txt" in path for path in files.keys())
-        
         if has_package_json:
-            await e2b_manager.install_dependencies(project_id, {"react": "^18"}, preview_mode=preview_mode)
-        elif has_requirements:
-            await e2b_manager.install_dependencies(project_id, {"fastapi": "^0.100"})
+            await e2b_manager.install_dependencies(
+                project_id=project_id,
+                preview_mode="fullstack"
+            )
         
-        # Start server
-        server_command = "npm run dev" if has_package_json else "python main.py"
-        server_info = await e2b_manager.start_server(project_id, server_command)
+        # Start frontend (and backend if present)
+        server_info = await e2b_manager.start_servers(
+            project_id=project_id,
+            preview_mode="fullstack"
+        )
         preview_url = server_info.get("preview_url")
+
         
         # Update or create sandbox session
         await db.sandbox_sessions.update_one(
