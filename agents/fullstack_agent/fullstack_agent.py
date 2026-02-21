@@ -5,7 +5,7 @@ Clean Code by Senior Python + LangChain Expert
 
 ARCHITECTURE:
 - Central Hub generates SCP → Fullstack Agent executes with tools
-- 1-3 API calls based on complexity (NOT multi-turn loop)
+- 1-3 API calls based on complexity (NOT multi-turn loop),
 - LangChain tools for codebase memory and context
 - Proper error handling, logging, and validation
 """
